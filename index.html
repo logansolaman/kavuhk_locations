@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KAVU Location Manager</title>
+
+  <!-- React 18 (UMD) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+
+  <!-- Babel Standalone — runtime JSX compilation -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Lucide React (UMD) — global: LucideReact -->
+  <script src="https://unpkg.com/lucide-react@0.344.0/dist/umd/lucide-react.js"></script>
+</head>
+<body class="overflow-hidden bg-gray-950">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    "use strict";
+
+    const { useState } = React;
+
+    // ================================================================
+    // CONFIGURATION — matches your GitHub repository & file location
+    // ================================================================
+    const GITHUB_REPO      = "logansolaman/kavu";
+    const GITHUB_FILE_PATH = "assets/store_address.json";
+    const GITHUB_BRANCH    = "main";
+    const GITHUB_API_BASE  = "https://api.github.com";
+    const LS_TOKEN_KEY     = "kavu_gh_pat";
+
+    // ================================================================
+    // ICON DESTRUCTURE — from LucideReact UMD global
+    // ================================================================
+    const {
+      Plus,
+      Save,
+      RefreshCw,
+      X,
+      AlertCircle,
+      CheckCircle2,
+      Search,
+      Upload,
+      Lock,
+      Eye,
+      EyeOff,
+      MapPin,
+      Store,
+      ChevronRight,
+      Loader2,
+      Info,
+    } = LucideReact;
+
+    // ================================================================
+    // CONSTANTS
+    // ================================================================
+    const EMPTY_LOCATION = {
+      name: "",
+      store_name: "",
+      address: "",
+      telephone: "",
+      map_url: "",
+    };
+
+    // ================================================================
+    // VALIDATION
+    // ================================================================
+    function validateLocation(data) {
+      const errors = {};
+      if (!data.name.trim())
+        errors.name = "Name is required.";
+      if (!data.store_name.trim())
+        errors.store_name = "Store name is required.";
+      if (!data.address.trim())
+        errors.address = "Address is required.";
+      if (!data.telephone.trim())
+        errors.telephone = "Telephone is required.";
+      if (!data.map_url.trim()) {
+        errors.map_url = "Map URL is required.";
+      } else if (!/^https?:\/\/.+/.test(data.map_url.trim())) {
+        errors.map_url = "Map URL must start with http:// or https://";
+      }
+      return errors;
+    }
+
+    // ================================================================
+    // SETUP / AUTH SCREEN
+    // Shown when no valid token is present in state or localStorage.
+    // ================================================================
+    function SetupScreen({ onTokenSaved }) {
+      const [pat, setPat]               = useState("");
+      const [showToken, setShowToken]   = useState(false);
+
+      function handleSave() {
+        const t = pat.trim();
+        if (!t) return;
+        localStorage.setItem(LS_TOKEN_KEY, t);
+        onTokenSaved(t);
+      }
+
+      return (
+        <div className="h-screen bg-gray-950 flex items-center justify-center p-6">
+          <div className="w-full max-w-lg bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl p-8">
+
+            {/* Title */}
+            <div className="flex items-center gap-3 mb-6">
+              <div className="bg-blue-600 p-2 rounded-xl">
+                <Lock size={22} className="text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-white">KAVU Location Manager</h1>
+                <p className="text-gray-500 text-sm">Shopify Theme · Secure GitHub-Backed Admin</p>
+              </div>
+            </div>
+
+            {/* Token instructions */}
+            <div className="bg-amber-950/40 border border-amber-600/30 rounded-xl p-4 mb-6">
+              <div className="flex gap-3">
+                <Info size={15} className="text-amber-400 mt-0.5 flex-shrink-0" />
+                <div className="text-xs">
+                  <p className="font-semibold text-amber-300 mb-2">
+                    How to generate a minimal-privilege Fine-grained PAT
+                  </p>
+                  <ol className="list-decimal list-inside space-y-1 text-amber-200/70">
+                    <li>
+                      Go to <strong>GitHub → Settings → Developer settings → Fine-grained tokens</strong>
+                    </li>
+                    <li>
+                      Under "Repository access" select <strong>Only select repositories</strong> →
+                      choose <code className="bg-amber-950/60 px-1 rounded">logansolaman/kavu</code>
+                    </li>
+                    <li>
+                      Under "Repository permissions" set{" "}
+                      <strong>Contents → Read and write</strong>
+                    </li>
+                    <li>
+                      <strong>Do NOT</strong> grant admin, workflows, or any other permissions
+                    </li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+
+            {/* Token input */}
+            <label className="block text-sm font-medium text-gray-300 mb-1.5">
+              GitHub Fine-grained Personal Access Token
+            </label>
+            <div className="relative mb-2">
+              <input
+                type={showToken ? "text" : "password"}
+                value={pat}
+                onChange={(e) => setPat(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSave()}
+                placeholder="github_pat_…"
+                autoComplete="off"
+                className="w-full bg-gray-800 border border-gray-600 text-white rounded-lg px-4 py-3 pr-12 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                type="button"
+                onClick={() => setShowToken((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-200 transition-colors"
+              >
+                {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            <p className="text-xs text-gray-600 mb-6">
+              Stored only in your browser's localStorage. Transmitted exclusively to{" "}
+              <strong className="text-gray-500">api.github.com</strong> over HTTPS.
+            </p>
+
+            <button
+              onClick={handleSave}
+              disabled={!pat.trim()}
+              className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white font-semibold rounded-lg px-4 py-3 transition-colors"
+            >
+              Save Token &amp; Enter App
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ================================================================
+    // RESULT MODAL — shown after a commit attempt (success or error)
+    // ================================================================
+    function ResultModal({ modal, onClose }) {
+      if (!modal.show) return null;
+      const ok = modal.type === "success";
+
+      return (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div
+            className={`bg-gray-900 border ${
+              ok ? "border-green-600/50" : "border-red-600/50"
+            } rounded-2xl shadow-2xl p-6 w-full max-w-md`}
+          >
+            <div className="flex items-start gap-3 mb-5">
+              {ok ? (
+                <CheckCircle2 size={22} className="text-green-400 flex-shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle size={22} className="text-red-400 flex-shrink-0 mt-0.5" />
+              )}
+              <div className="flex-1 min-w-0">
+                <h3
+                  className={`font-bold text-base mb-1 ${
+                    ok ? "text-green-300" : "text-red-300"
+                  }`}
+                >
+                  {ok ? "Commit Successful" : "Commit Failed"}
+                </h3>
+                <p className="text-gray-300 text-sm break-all whitespace-pre-wrap">
+                  {modal.message}
+                </p>
+              </div>
+              <button
+                onClick={onClose}
+                className="text-gray-600 hover:text-gray-300 transition-colors ml-1 mt-0.5"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <button
+              onClick={onClose}
+              className={`w-full font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors ${
+                ok
+                  ? "bg-green-700 hover:bg-green-600 text-white"
+                  : "bg-gray-700 hover:bg-gray-600 text-white"
+              }`}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ================================================================
+    // MAIN APPLICATION
+    // ================================================================
+    function App() {
+      // ── State ──────────────────────────────────────────────────────
+      const [token,          setToken]          = useState(() => localStorage.getItem(LS_TOKEN_KEY) || "");
+      const [tokenInput,     setTokenInput]     = useState(() => localStorage.getItem(LS_TOKEN_KEY) || "");
+      const [showTokenInput, setShowTokenInput] = useState(false);
+
+      // Data: `locations` = last committed state; `pendingLocs` = staged edits
+      const [locations,    setLocations]    = useState([]);
+      const [pendingLocs,  setPendingLocs]  = useState(null); // null means no staged edits
+
+      // Editor
+      const [selectedIndex, setSelectedIndex] = useState(null);  // null = nothing; -1 = new
+      const [formData,      setFormData]      = useState({ ...EMPTY_LOCATION });
+      const [formErrors,    setFormErrors]    = useState({});
+
+      // UI
+      const [searchQuery, setSearchQuery] = useState("");
+      const [isFetching,  setIsFetching]  = useState(false);
+      const [fetchError,  setFetchError]  = useState("");
+      const [isCommitting, setIsCommitting] = useState(false);
+      const [modal,       setModal]       = useState({ show: false, type: "", message: "" });
+
+      // The working data set is staged edits when present, otherwise last-fetched
+      const activeLocs = pendingLocs !== null ? pendingLocs : locations;
+      const hasPending = pendingLocs !== null;
+
+      // ── GitHub: Fetch ──────────────────────────────────────────────
+      async function fetchLocations() {
+        if (hasPending) {
+          const ok = window.confirm(
+            "You have unsaved changes in memory.\nFetching will overwrite them. Continue?"
+          );
+          if (!ok) return;
+        }
+        setIsFetching(true);
+        setFetchError("");
+        try {
+          const res = await fetch(
+            `${GITHUB_API_BASE}/repos/${GITHUB_REPO}/contents/${GITHUB_FILE_PATH}?ref=${GITHUB_BRANCH}`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: "application/vnd.github.v3+json",
+              },
+            }
+          );
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(
+              err.message || `HTTP ${res.status} — check your token and repository settings.`
+            );
+          }
+          const data    = await res.json();
+          // GitHub wraps base64 with newlines every 60 chars — strip them before decoding
+          const decoded = JSON.parse(atob(data.content.replace(/\n/g, "")));
+          setLocations(decoded);
+          setPendingLocs(null);
+          setSelectedIndex(null);
+          setFormData({ ...EMPTY_LOCATION });
+          setFormErrors({});
+        } catch (e) {
+          setFetchError(e.message);
+        } finally {
+          setIsFetching(false);
+        }
+      }
+
+      // ── GitHub: Commit ─────────────────────────────────────────────
+      async function commitChanges() {
+        if (!hasPending) return;
+        setIsCommitting(true);
+        try {
+          // Step 1 — fetch the current SHA to prevent mid-air collision
+          const shaRes = await fetch(
+            `${GITHUB_API_BASE}/repos/${GITHUB_REPO}/contents/${GITHUB_FILE_PATH}?ref=${GITHUB_BRANCH}`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: "application/vnd.github.v3+json",
+              },
+            }
+          );
+          if (!shaRes.ok) {
+            const e = await shaRes.json().catch(() => ({}));
+            throw new Error(
+              e.message || `Failed to retrieve current file SHA (HTTP ${shaRes.status}).`
+            );
+          }
+          const { sha } = await shaRes.json();
+
+          // Step 2 — encode updated JSON as base64 (handles Unicode / Chinese chars)
+          const json    = JSON.stringify(pendingLocs, null, 2);
+          const content = btoa(unescape(encodeURIComponent(json)));
+
+          // Step 3 — PUT updated file to GitHub
+          const putRes = await fetch(
+            `${GITHUB_API_BASE}/repos/${GITHUB_REPO}/contents/${GITHUB_FILE_PATH}`,
+            {
+              method: "PUT",
+              headers: {
+                Authorization:  `Bearer ${token}`,
+                Accept:         "application/vnd.github.v3+json",
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                message: `chore: update store locations [${new Date().toISOString()}]`,
+                content,
+                sha,
+                branch: GITHUB_BRANCH,
+              }),
+            }
+          );
+          if (!putRes.ok) {
+            const e = await putRes.json().catch(() => ({}));
+            throw new Error(e.message || `Commit failed (HTTP ${putRes.status}).`);
+          }
+          const putData   = await putRes.json();
+          const commitSha = putData.commit?.sha || "—";
+
+          // Promote staged edits to committed baseline
+          setLocations(pendingLocs);
+          setPendingLocs(null);
+          setModal({
+            show:    true,
+            type:    "success",
+            message: `${pendingLocs.length} location${pendingLocs.length !== 1 ? "s" : ""} committed successfully.\n\nCommit SHA: ${commitSha}`,
+          });
+        } catch (e) {
+          setModal({ show: true, type: "error", message: e.message });
+        } finally {
+          setIsCommitting(false);
+        }
+      }
+
+      // ── Token management ───────────────────────────────────────────
+      function handleUpdateToken() {
+        const t = tokenInput.trim();
+        if (!t) return;
+        localStorage.setItem(LS_TOKEN_KEY, t);
+        setToken(t);
+      }
+
+      function handleClearToken() {
+        if (!window.confirm("Sign out? This will remove your token from localStorage.")) return;
+        localStorage.removeItem(LS_TOKEN_KEY);
+        setToken("");
+        setTokenInput("");
+        setLocations([]);
+        setPendingLocs(null);
+        setSelectedIndex(null);
+      }
+
+      // ── List interactions ──────────────────────────────────────────
+      function selectLocation(idx) {
+        setSelectedIndex(idx);
+        setFormData({ ...activeLocs[idx] });
+        setFormErrors({});
+      }
+
+      function startNew() {
+        setSelectedIndex(-1);
+        setFormData({ ...EMPTY_LOCATION });
+        setFormErrors({});
+      }
+
+      function closeEditor() {
+        setSelectedIndex(null);
+        setFormData({ ...EMPTY_LOCATION });
+        setFormErrors({});
+      }
+
+      // ── Form interactions ──────────────────────────────────────────
+      function updateField(field, value) {
+        setFormData((prev) => ({ ...prev, [field]: value }));
+        // Clear field-level error as the user types
+        if (formErrors[field]) {
+          setFormErrors((prev) => {
+            const next = { ...prev };
+            delete next[field];
+            return next;
+          });
+        }
+      }
+
+      function saveRecord() {
+        const errors = validateLocation(formData);
+        if (Object.keys(errors).length > 0) {
+          setFormErrors(errors);
+          return;
+        }
+        const updated = [...activeLocs];
+        let newIndex;
+        if (selectedIndex === -1) {
+          // New location — append
+          updated.push({ ...formData });
+          newIndex = updated.length - 1;
+        } else {
+          // Existing location — update in-place
+          updated[selectedIndex] = { ...formData };
+          newIndex = selectedIndex;
+        }
+        setPendingLocs(updated);
+        setSelectedIndex(newIndex);
+        setFormErrors({});
+      }
+
+      // ── Filtered list ──────────────────────────────────────────────
+      const filteredLocs = activeLocs.filter((loc) => {
+        if (!searchQuery) return true;
+        const q = searchQuery.toLowerCase();
+        return (
+          loc.name.toLowerCase().includes(q) ||
+          loc.store_name.toLowerCase().includes(q)
+        );
+      });
+
+      // ── Auth gate ──────────────────────────────────────────────────
+      if (!token) {
+        return (
+          <SetupScreen
+            onTokenSaved={(t) => {
+              setToken(t);
+              setTokenInput(t);
+            }}
+          />
+        );
+      }
+
+      // ── Render ─────────────────────────────────────────────────────
+      return (
+        <div className="h-screen flex flex-col bg-gray-950 text-gray-100 overflow-hidden">
+          <ResultModal
+            modal={modal}
+            onClose={() => setModal({ show: false, type: "", message: "" })}
+          />
+
+          {/* ════════════════════ HEADER ════════════════════ */}
+          <header className="flex-shrink-0 bg-gray-900 border-b border-gray-800 px-5 py-3">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              {/* Brand */}
+              <div className="flex items-center gap-3">
+                <div className="bg-blue-600 p-1.5 rounded-lg">
+                  <MapPin size={18} className="text-white" />
+                </div>
+                <div>
+                  <h1 className="font-bold text-white text-lg leading-tight">
+                    KAVU Location Manager
+                  </h1>
+                  <p className="text-xs text-gray-600 font-mono">
+                    {GITHUB_REPO} / {GITHUB_FILE_PATH} @ {GITHUB_BRANCH}
+                  </p>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-3 flex-wrap">
+                {hasPending && (
+                  <span className="bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-semibold px-3 py-1 rounded-full">
+                    ● Unsaved changes in memory
+                  </span>
+                )}
+                <button
+                  onClick={commitChanges}
+                  disabled={!hasPending || isCommitting}
+                  className="flex items-center gap-2 bg-green-700 hover:bg-green-600 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg px-4 py-2 transition-colors"
+                >
+                  {isCommitting ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" /> Committing…
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={15} /> Push Updates to Shopify Theme Repository
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* ════════════════════ CONFIG BAR ════════════════════ */}
+          <div className="flex-shrink-0 bg-gray-900/50 border-b border-gray-800 px-5 py-2.5">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              {/* Token input */}
+              <div className="relative">
+                <input
+                  type={showTokenInput ? "text" : "password"}
+                  value={tokenInput}
+                  onChange={(e) => setTokenInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleUpdateToken()}
+                  placeholder="GitHub PAT (fine-grained)"
+                  autoComplete="off"
+                  className="bg-gray-800 border border-gray-700 text-gray-200 rounded-lg pl-3 pr-9 py-1.5 text-sm font-mono w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowTokenInput((v) => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-300 transition-colors"
+                >
+                  {showTokenInput ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+
+              <button
+                onClick={handleUpdateToken}
+                className="bg-blue-700/70 hover:bg-blue-600 text-white text-sm rounded-lg px-3 py-1.5 font-medium transition-colors"
+              >
+                Update Token
+              </button>
+
+              <button
+                onClick={fetchLocations}
+                disabled={isFetching}
+                className="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white text-sm rounded-lg px-3 py-1.5 font-medium transition-colors"
+              >
+                {isFetching ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" /> Fetching…
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw size={14} /> Fetch Latest Locations
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={handleClearToken}
+                className="text-gray-600 hover:text-red-400 text-xs underline transition-colors ml-auto"
+              >
+                Sign out
+              </button>
+            </div>
+
+            {/* Fetch error */}
+            {fetchError && (
+              <div className="flex items-center gap-1.5 mt-2 text-red-400 text-xs">
+                <AlertCircle size={13} />
+                <span>{fetchError}</span>
+              </div>
+            )}
+          </div>
+
+          {/* ════════════════════ SPLIT DASHBOARD ════════════════════ */}
+          <div className="flex-1 flex gap-4 p-4 overflow-hidden">
+
+            {/* ── LEFT PANE: Location List ── */}
+            <div className="w-72 flex-shrink-0 flex flex-col bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+
+              {/* Search bar */}
+              <div className="flex-shrink-0 p-3 border-b border-gray-800">
+                <div className="relative">
+                  <Search
+                    size={13}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 pointer-events-none"
+                  />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search by name or store…"
+                    className="w-full bg-gray-800 border border-gray-700 text-gray-200 rounded-lg pl-7 pr-8 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-300 transition-colors"
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Create new location */}
+              <div className="flex-shrink-0 p-3 border-b border-gray-800">
+                <button
+                  onClick={startNew}
+                  className={`w-full flex items-center justify-center gap-2 text-sm font-semibold rounded-lg py-2.5 transition-colors ${
+                    selectedIndex === -1
+                      ? "bg-blue-600 text-white"
+                      : "bg-blue-600/15 hover:bg-blue-600/25 text-blue-300 border border-blue-600/30"
+                  }`}
+                >
+                  <Plus size={15} /> Create New Location
+                </button>
+              </div>
+
+              {/* List body */}
+              <div className="flex-1 overflow-y-auto">
+                {isFetching ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-600 text-sm">
+                    <Loader2 size={22} className="animate-spin" />
+                    <span>Loading…</span>
+                  </div>
+                ) : activeLocs.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-700 text-sm p-6 text-center">
+                    <MapPin size={28} className="opacity-20" />
+                    <span className="font-medium">No locations loaded</span>
+                    <span className="text-xs leading-relaxed">
+                      Click "Fetch Latest Locations" above to load data from GitHub.
+                    </span>
+                  </div>
+                ) : filteredLocs.length === 0 ? (
+                  <div className="p-4 text-center text-gray-600 text-xs">
+                    No results for "{searchQuery}"
+                  </div>
+                ) : (
+                  filteredLocs.map((loc) => {
+                    // Resolve the true index within activeLocs (search may reorder display)
+                    const actualIdx  = activeLocs.indexOf(loc);
+                    const isSelected = selectedIndex === actualIdx;
+                    return (
+                      <button
+                        key={actualIdx}
+                        onClick={() => selectLocation(actualIdx)}
+                        className={`w-full text-left px-4 py-3 border-b border-gray-800/60 transition-colors flex items-center gap-2 border-l-2 ${
+                          isSelected
+                            ? "bg-blue-600/20 border-l-blue-500"
+                            : "hover:bg-gray-800/60 border-l-transparent"
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-white truncate">
+                            {loc.name || (
+                              <span className="text-gray-600 italic text-xs">Unnamed</span>
+                            )}
+                          </p>
+                          <p className="text-xs text-gray-500 truncate">{loc.store_name}</p>
+                        </div>
+                        <ChevronRight size={13} className="text-gray-700 flex-shrink-0" />
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Count footer */}
+              <div className="flex-shrink-0 border-t border-gray-800 px-4 py-2 flex items-center justify-between">
+                <span className="text-xs text-gray-700">
+                  {activeLocs.length} location{activeLocs.length !== 1 ? "s" : ""}
+                </span>
+                {searchQuery && filteredLocs.length !== activeLocs.length && (
+                  <span className="text-xs text-gray-700">{filteredLocs.length} shown</span>
+                )}
+              </div>
+            </div>
+
+            {/* ── RIGHT PANE: Editor ── */}
+            <div className="flex-1 flex flex-col bg-gray-900 rounded-xl border border-gray-800 overflow-hidden min-w-0">
+              {selectedIndex === null ? (
+                /* Empty / idle state */
+                <div className="flex-1 flex flex-col items-center justify-center text-gray-700 p-8 text-center gap-3">
+                  <Store size={44} className="opacity-15" />
+                  <p className="text-base font-medium">Select a location to edit</p>
+                  <p className="text-sm">
+                    Or click{" "}
+                    <strong className="text-gray-500">+ Create New Location</strong>{" "}
+                    to add a new entry.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Editor header */}
+                  <div className="flex-shrink-0 px-6 py-4 border-b border-gray-800 flex items-start justify-between gap-4">
+                    <div>
+                      <h2 className="text-lg font-bold text-white leading-tight">
+                        {selectedIndex === -1
+                          ? "New Location"
+                          : formData.name || "Edit Location"}
+                      </h2>
+                      <p className="text-xs text-gray-600 mt-0.5">
+                        {selectedIndex === -1
+                          ? "Fill in all fields and click "Add to List" to stage this entry."
+                          : `Record #${selectedIndex + 1} — changes are staged in memory until pushed.`}
+                      </p>
+                    </div>
+                    <button
+                      onClick={closeEditor}
+                      className="text-gray-700 hover:text-gray-300 transition-colors mt-0.5 flex-shrink-0"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+
+                  {/* Form fields */}
+                  <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+                    {[
+                      {
+                        key:         "name",
+                        label:       "Short Name",
+                        placeholder: "e.g. 3 JACK",
+                        hint:        "Internal identifier displayed in the sidebar list.",
+                      },
+                      {
+                        key:         "store_name",
+                        label:       "Full Store Name",
+                        placeholder: "e.g. 3Jack Store 山積戶外露營用品",
+                        hint:        "Full display name — Chinese characters are fully supported.",
+                      },
+                      {
+                        key:         "address",
+                        label:       "Address",
+                        placeholder: "e.g. 觀塘官塘工業中心第四期 9 樓 A2 室",
+                        hint:        "Complete physical address.",
+                      },
+                      {
+                        key:         "telephone",
+                        label:       "Telephone",
+                        placeholder: "e.g. +852-9778-2137",
+                        hint:        "Include country code. Use dashes as separators.",
+                      },
+                      {
+                        key:         "map_url",
+                        label:       "Google Maps URL",
+                        placeholder: "https://maps.app.goo.gl/…",
+                        hint:        "Must begin with http:// or https://",
+                      },
+                    ].map(({ key, label, placeholder, hint }) => (
+                      <div key={key}>
+                        <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                          {label}{" "}
+                          <span className="text-red-400 text-xs font-normal">*required</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={formData[key]}
+                          onChange={(e) => updateField(key, e.target.value)}
+                          placeholder={placeholder}
+                          className={`w-full bg-gray-800 text-gray-100 rounded-lg px-4 py-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 border ${
+                            formErrors[key]
+                              ? "border-red-500/70 focus:ring-red-500"
+                              : "border-gray-700 focus:border-blue-500"
+                          }`}
+                        />
+                        {formErrors[key] ? (
+                          <p className="flex items-center gap-1 text-red-400 text-xs mt-1.5">
+                            <AlertCircle size={12} />
+                            {formErrors[key]}
+                          </p>
+                        ) : (
+                          <p className="text-gray-700 text-xs mt-1">{hint}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Save bar */}
+                  <div className="flex-shrink-0 px-6 py-4 border-t border-gray-800 flex items-center justify-between gap-4">
+                    <p className="text-xs text-gray-700">
+                      Records are staged in browser memory. Push to GitHub when ready.
+                    </p>
+                    <button
+                      onClick={saveRecord}
+                      className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm rounded-lg px-5 py-2.5 transition-colors flex-shrink-0"
+                    >
+                      <Save size={15} />
+                      {selectedIndex === -1 ? "Add to List" : "Save Changes"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* ════════════════════ FOOTER ════════════════════ */}
+          <footer className="flex-shrink-0 border-t border-gray-800/40 px-6 py-2 text-center">
+            <p className="text-xs text-gray-800">
+              Your GitHub token is stored in <strong>localStorage</strong> only — transmitted
+              exclusively to <strong>api.github.com</strong> over HTTPS. Never grant permissions
+              beyond <em>Repository contents: Read &amp; Write</em> for{" "}
+              <code>{GITHUB_REPO}</code>.
+            </p>
+          </footer>
+        </div>
+      );
+    }
+
+    // ================================================================
+    // BOOTSTRAP
+    // ================================================================
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
